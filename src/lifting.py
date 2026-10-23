@@ -1,8 +1,3 @@
-#Hunter Weston
-
-#Polynomial lifting (up to degree d) for EDMD
-#Outputs learned C matrix for projecting lifted state to physical state
-
 import numpy as np
 
 def monomials(x, degree=2, include_bias=True):
@@ -11,14 +6,12 @@ def monomials(x, degree=2, include_bias=True):
     feats = []
     if include_bias:
         feats.append(1.0)
-    #degree 1
     feats.extend(list(x))
     if degree >= 2:
         for i in range(n):
             for j in range(i, n):
                 feats.append(x[i]*x[j])
     if degree >= 3:
-        #cubic terms
         for i in range(n):
             for j in range(i, n):
                 for k in range(j, n):
@@ -29,8 +22,6 @@ class LiftingMap:
     def __init__(self, degree=2, include_bias=True):
         self.degree = degree
         self.include_bias = include_bias
-        #dimension inferred on first call
-
     def lift(self, X):
         """
         X: shape (N, n)

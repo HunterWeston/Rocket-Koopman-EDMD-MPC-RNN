@@ -1,77 +1,113 @@
-#Hunter Weston
-
-#Params
-
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class PhysParams:
-    g0: float = 9.80665       #g [m/s^2]
-    rho: float = 1.225        #air density [kg/m^3]
-    Cd: float = 0.5           #drag coefficent
-    A: float = 0.01           #ref area [m^2]
-    Isp: float = 250.0        #specific impulse [s]
-    m_dry: float = 1.0        #dry mass [kg]
-    m_fuel0: float = 1.0      #fuel mass [kg] (assumes full fuel consumption)
+    g0: float = 9.80665        #gravity [m/s^2]
+    rho: float = 1.225         #sea-level air density [kg/m^3]
+    Cd: float = 0.45           #axial drag coefficient
+    Cd_lat: float = 1.1        #lateral drag coefficient
+    A_ref: float = 0.00785     #axial area [m^2]
+    A_lat: float = 0.04        #lateral area [m^2]
+    Isp: float = 210.0         #specific impulse [s]
+    m_dry: float = 2.0         #dry mass [kg]
+    m_fuel0: float = 1.5       #initial fuel mass [kg]
+    Izz: float = 0.08          #inertia around pitch/yaw [kg*m^2]
+    L_tvc: float = 0.30        #tvc lever arm [m]
+    L_cp: float = -0.001       #small passive stability offset
+    delta_max: float = 0.26    #max gimbal angle [rad]
+
+@dataclass
+class MotorParams:
+    motor_type: str = "srb"
+    srb_profile: tuple = (
+        (0.00, 0.00),
+        (0.05, 1.00),
+        (0.30, 0.96),
+        (4.00, 0.92),
+        (7.50, 0.85),
+        (9.00, 0.60),
+        (9.80, 0.15),
+        (10.0, 0.00),
+    )
 
 @dataclass
 class SimParams:
-    dt: float = 0.02          #simulation timestep [s]
-    T_train: float = 10.0     #training data gen [s]
-    T_eval: float = 10.0      #closed loop eval [s]
-    seed: int = 42            #RNG seed
-    wind_std: float = 0.0     #vert wind disturbance std [m/s^2] (accel noise)
-    meas_noise_std: float = 0.0 #measurement noise for h and v [units of state]
-    thrust_std: float = 0.05  #fractional Gaussian noise on thrust
-    N_MC_runs: int = 5         #Monte Carlo runs / controller
+    dt: float = 0.02
+    T_train: float = 15.0
+    T_eval: float = 25.0
+    seed: int = None
+    wind_speed_ms: float = 5.5
+    wind_gust_factor: float = 2.2
+    wind_gust_prob: float = 0.012
+    meas_noise_std: float = 0.01
+    thrust_std: float = 0.015
+    N_MC_runs: int = 5
+    plant_mismatch_enabled: bool = False
+    mismatch_start_time: float = 0.0
+    mismatch_cd_lat_scale: float = 1.0
+    mismatch_inertia_scale: float = 1.0
+    mismatch_tvc_scale: float = 1.0
+    mismatch_accel_north: float = 0.0
+    mismatch_accel_east: float = 0.0
+    isolate_learning_ablation: bool = False
 
 @dataclass
 class PIDParams:
-    Kp: float = 5.0  #Proprotional
-    Ki: float = 0.1  #Integral
-    Kd: float = 2.0  #Derivative
+    Kp_alt: float = 3.5
+    Ki_alt: float = 0.03
+    Kd_alt: float = 1.5
+    Kp_att: float = 2.0
+    Ki_att: float = 0.0
+    Kd_att: float = 0.22
+    Kp_lat: float = 0.025
+    Ki_lat: float = 0.003
+    Kd_lat: float = 0.08
 
 @dataclass
 class ControlParams:
-    u_min: float = 0.0        #min thrust [N]
-    u_max: float = 40.0       #max thrust [N]
-    horizon: int = 30         #MPC horizon
-    Q_h: float = 100.0        #altitude weight
-    Q_v: float = 10.0         #velocity weight
-    Q_m: float = 1.0          #mass weight (idk why mass has to be part of the cost function but it seems to work)
-    R_u: float = 0.01         #control effort weight
-    ref_altitude: float = 0.0 #ref landing altitude [m]
-    ref_velocity: float = 0.0 #ref landing velocity [m/s]
+    F_min: float = 0.0
+    F_max: float = 55.0
+    delta_max: float = 0.26
+    horizon: int = 20
+    Q_h: float = 120.0
+    Q_vz: float = 2.0
+    Q_m: float = 0.01
+    R_F: float = 0.25
+    Q_y: float = 120.0
+    Q_vy: float = 20.0
+    Q_theta: float = 8.0
+    Q_omega: float = 0.0
+    R_delta: float = 5.0
 
 @dataclass
 class KoopmanParams:
-    degree: int = 2           #poly lifting degree
-    ridge_lambda: float = 1e-4 #ridge regularization for EDMD
-    online_window: int = 400  #sliding window size (online updates)
-    update_every: int = 20    #refit frequency
-    include_bias: bool = True  #seems to work, idk why tho lol
+    degree: int = 2
+    ridge_lambda: float = 1e-4
+    online_window: int = 800
+    include_bias: bool = True
+    online_enabled: bool = True
+    online_update_every: int = 8
+    online_blend: float = 0.08
+    online_min_samples: int = 120
 
 @dataclass
 class ResidualNNParams:
     enabled: bool = True
-    hidden: int = 16          #hidden units for MLP
-    lr: float = 1e-3          #learning rate for SGD
+    hidden: int = 32
+    lr: float = 8e-4
     batch_size: int = 64
-    train_every: int = 5      #trains NN every N steps
-    epochs_per_update: int = 2
-    buffer_size: int = 5000   #replay buffer size
+    train_every: int = 5
+    epochs_per_update: int = 3
+    buffer_size: int = 8000
 
 @dataclass
 class OutputParams:
     outdir: str = "artifacts"
-    make_plots: bool = True
-    save_csv: bool = True
-    save_npz: bool = True
 
 @dataclass
 class Config:
-    from dataclasses import field
     phys: PhysParams = field(default_factory=PhysParams)
+    motor: MotorParams = field(default_factory=MotorParams)
     sim: SimParams = field(default_factory=SimParams)
     ctrl: ControlParams = field(default_factory=ControlParams)
     koop: KoopmanParams = field(default_factory=KoopmanParams)

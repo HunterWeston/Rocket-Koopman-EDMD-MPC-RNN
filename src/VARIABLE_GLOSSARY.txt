@@ -1,0 +1,286 @@
+KOOPMAN ROCKET VARIABLE GLOSSARY
+
+============================================================
+parameters.py
+============================================================
+
+cfg: global config object that holds all parameter groups.
+
+PhysParams
+- g0: gravity acceleration [m/s^2].
+- rho: air density [kg/m^3].
+- Cd: axial drag coefficient.
+- Cd_lat: lateral drag coefficient.
+- A_ref: axial reference area [m^2].
+- A_lat: lateral projected area [m^2].
+- Isp: motor specific impulse [s].
+- m_dry: dry mass [kg].
+- m_fuel0: initial fuel mass [kg].
+- Izz: rotational inertia around pitch/yaw [kg*m^2].
+- L_tvc: thrust vector control moment arm [m].
+- L_cp: center-of-pressure offset for passive stability [m].
+- delta_max: max gimbal angle [rad].
+
+MotorParams
+- motor_type: thrust model type string.
+- srb_profile: piecewise thrust curve as (time, fraction_of_Fmax).
+
+SimParams
+- dt: simulation time step [s].
+- T_train: duration for Koopman training data generation [s].
+- T_eval: duration for closed-loop simulation [s].
+- seed: random seed base.
+- wind_speed_ms: nominal wind speed [m/s].
+- wind_gust_factor: gust scale multiplier.
+- wind_gust_prob: gust trigger probability per step.
+- meas_noise_std: measurement/model mismatch noise level.
+- thrust_std: thrust noise level.
+- N_MC_runs: monte carlo run count.
+
+PIDParams
+- Kp_alt, Ki_alt, Kd_alt: altitude loop gains.
+- Kp_att, Ki_att, Kd_att: attitude loop gains.
+- Kp_lat, Ki_lat, Kd_lat: lateral loop gains.
+
+ControlParams
+- F_min, F_max: thrust bounds [N].
+- horizon: MPC horizon length.
+- Q_*: state weights.
+- R_*: control weights.
+
+KoopmanParams
+- degree: polynomial lifting order.
+- ridge_lambda: ridge regularization factor.
+- online_window: reserved size for online adaptation windows.
+- include_bias: include constant term in lifting.
+- online_enabled: turns online Koopman refits on/off.
+- online_update_every: number of sim steps between online refits.
+- online_blend: blend factor for mixing old/new koopman matrices.
+- online_min_samples: minimum buffered samples before first online refit.
+
+ResidualNNParams
+- enabled: turns residual net on/off.
+- hidden: hidden layer width.
+- lr: learning rate.
+- batch_size: SGD batch size.
+- train_every: train interval in sim steps.
+- epochs_per_update: update epochs each train trigger.
+- buffer_size: replay memory max samples.
+
+OutputParams
+- outdir: output folder for plots/html/data.
+
+============================================================
+rocket_model.py
+============================================================
+
+State vector x (11 states):
+- x[0] = h: altitude [m].
+- x[1] = vz: vertical velocity [m/s].
+- x[2] = xp: north position [m].
+- x[3] = vx: north velocity [m/s].
+- x[4] = yp: east position [m].
+- x[5] = vy: east velocity [m/s].
+- x[6] = pitch: pitch angle [rad].
+- x[7] = prate: pitch rate [rad/s].
+- x[8] = yaw: yaw angle [rad].
+- x[9] = yrate: yaw rate [rad/s].
+- x[10] = m: mass [kg].
+
+Control vector u:
+- u[0] = F: thrust [N].
+- u[1] = delta_p: pitch gimbal command [rad].
+- u[2] = delta_y: yaw gimbal command [rad].
+
+Wind variables:
+- wind_vx: wind speed in north axis [m/s].
+- wind_vy: wind speed in east axis [m/s].
+
+Internal force/moment names:
+- F_h: thrust vertical component.
+- F_xp, F_yp: thrust lateral components.
+- Dz, Dx, Dy: drag forces.
+- M_*: pitch/yaw moments from TVC, static aero, wind drag.
+
+Reference helpers:
+- rocket_ascent_reference: smooth ascent trajectory generator.
+- rocket_altitude_parabola: simple symmetric altitude curve.
+
+============================================================
+edmd.py
+============================================================
+
+EDMDc fields:
+- ridge: ridge coefficient.
+- A, B: learned lifted linear dynamics.
+- dz: lifted-state dimension.
+- du: control dimension.
+
+fit(...) args:
+- Z: lifted states at k, shape (N, dz).
+- U: controls at k, shape (N, du).
+- Zp: lifted states at k+1, shape (N, dz).
+
+fit(...) internal names:
+- Phi: concatenated regressor [Z U].
+- G: regularized normal matrix.
+- RHS: right-hand side for solve.
+- Theta: combined dynamics matrix so Zp ~= Z A^T + U B^T.
+
+============================================================
+lifting.py
+============================================================
+
+monomials(...): builds polynomial features from a single state vector.
+- x: base state vector.
+- degree: max polynomial order.
+- include_bias: whether to include constant 1 term.
+- feats: collected lifted features.
+
+LiftingMap
+- degree/include_bias: same as above.
+- lift(X): vectorized lifting over sample matrix X.
+
+fit_C(Z, X)
+- returns C such that physical state X is reconstructed from lifted Z.
+
+============================================================
+mpc.py
+============================================================
+
+LinearMPC fields:
+- A, B, C: lifted linear model and decoder.
+- N: prediction horizon.
+- u_min, u_max: per-step input limits.
+- Q, R: stage cost weights.
+- Sx, Su: lifted prediction matrices.
+- H: quadratic Hessian in projected problem.
+- L: Lipschitz constant used for projected gradient step size.
+- u_lb, u_ub: stacked bounds for full horizon sequence.
+
+solve(...) args:
+- z0: lifted initial state.
+- ref_traj: stacked target state trajectory.
+- u_init: warm-start sequence.
+- iters: projected gradient steps.
+
+============================================================
+residual_nn.py
+============================================================
+
+ReplayBuffer
+- X: stored inputs [h,vz,m,F].
+- Y: stored residual targets [dh,dvz,dm].
+- maxlen: cap on sample count.
+
+TinyMLP params:
+- W1, b1: first layer params.
+- W2, b2: output layer params.
+- lr: learning rate.
+
+TinyMLP internal:
+- Z1: first layer pre-activation.
+- H: tanh hidden activations.
+- Yhat: predicted residual.
+- E: prediction error.
+
+============================================================
+simulator.py
+============================================================
+
+MPC_TUNING: gains/scales used by lateral waypoint/benchmark logic.
+
+WindModel fields:
+- _azimuth: base wind direction [rad].
+- _steady_speed: baseline wind speed [m/s].
+- _w: OU turbulence state.
+- _gust_speed, _gust_steps: gust magnitude and remaining duration.
+- _az_drift: slow direction drift [rad].
+- _rng: per-run random generator.
+
+run_closed_loop main objects:
+- plant: Rocket3D physics model.
+- lift_alt/lift_lat: lifting maps.
+- A_alt/B_alt/C_alt: altitude lifted model.
+- A_yaw/B_yaw/C_yaw: yaw-axis lateral model.
+- A_pitch/B_pitch/C_pitch: pitch-axis lateral model.
+- mpc_yaw/mpc_pitch: one-axis MPC controllers.
+- pid: PID baseline thrust controller.
+- rnn/buf: residual learner and replay buffer.
+
+run_closed_loop guidance/control names:
+- wp_h, wp_xp, wp_yp: waypoint target [altitude, north, east].
+- wp_active/wp_reached: waypoint mode flags.
+- gimbal_int_p/gimbal_int_y: integral trim for pitch/yaw command.
+- mpc_dp_prev/mpc_dy_prev: last MPC sequences for warm-start.
+- F_cmd: SRB profile thrust command.
+- delta_p_cmd/delta_y_cmd: final gimbal commands.
+- x_next: next simulated state.
+- online_koop_updates: how many online koopman refits happened this run.
+- residual_buffer_size: replay buffer size at end of run.
+
+History dict keys (hist):
+- t, h, vz, xp, vx, y, vy
+- pitch, prate, theta, omega, m
+- F, delta_p, delta
+- h_ref, vz_ref
+- pred_h, pred_vz
+- phase
+- wind_vx, wind_vy, wind_azimuth
+
+run_monte_carlo:
+- base_seed/shared_base_seed: controls fair same-seed comparisons.
+- cfg_i: per-run config copy.
+
+============================================================
+main.py
+============================================================
+
+compute_errors(hist)
+- returns metrics dict for one run.
+- h_ref/vz_ref used as references.
+- xp/yp and vx/vy combined for 3D lateral metrics.
+
+plot_comparison_charts(...)
+- pid_hists/mpc_hists: run histories for each controller.
+- has_pid: if false, chart switches to mpc-only layout text/path.
+- waypoint: optional [h_pass, north, east] target marker.
+
+print_waypoint_transcript(...)
+- shows closest waypoint crossing samples per run.
+- threshold: max(15% of lateral target distance, 3m).
+
+run_and_compare(...)
+- shared_seed: single base seed used for fair PID/MPC weather pairing.
+- controllers: ["MPC"] when waypoint enabled, else ["PID","MPC"].
+- histories/all_metrics: run data and averaged metrics.
+
+============================================================
+visualization.py
+============================================================
+
+generate_3d_visualization_html(...)
+- histories: dict with PID and/or MPC run lists.
+- data_dict: serialized payload to JS.
+- max_alt/max_north/max_east: camera/axis scaling.
+- wp_json: waypoint object for rendering.
+
+JS-side key objects:
+- DATA: trajectories and signals from Python.
+- WAYPOINT: optional target marker.
+- LIMITS: bounds for render scaling.
+- STATE: UI render/playback state.
+- CVS/CTX: canvas nodes and drawing contexts.
+
+Coordinate convention used everywhere:
+- north axis uses xp.
+- east axis uses y.
+- altitude axis uses h.
+
+============================================================
+test_imports.py
+============================================================
+
+Simple import smoke test.
+- checks that key modules import without crashing.
+- prints a few current config values.
