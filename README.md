@@ -1,18 +1,20 @@
 # Predictive Lifted-State Rocket Flight Control with Online EDMDc, MPC, and Residual Neural Networks
 
-This repository implements a data-driven flight control system designed to maintain the trajectory of rockets during turbulent atmospheric ascent. 
+This repository implements a data-driven flight control algorithm to maintain the trajectory of rockets during turbulent atmospheric ascent. 
 
-Traditional flight controllers often struggle when facing non-linear aerodynamics, fast fuel burn, and sudden wind gusts. This framework solves that by translating complex, non-linear rocket behavior into a higher-dimensional linear space. 
+Traditional flight controllers often struggle when facing rapid and unpredictable changes like: non-linear aerodynamics, fast fuel burn, and sudden wind gusts. This framework simplifies these dynamics by lifting the complex, non-linear rocket behavior into a higher-dimensional linear space. 
 
-By making the math linear, the flight computer can solve complex trajectory optimization problems via simple Quadratic Programs at 50 Hz on low-power avionics.
+By making the dyanmics linear, the flight computer can acuratly predict and influence the future state of the system using Quadratic Programs at 50 Hz on low-power avionics.
 
 ## Core Architecture
 
-The architecture runs a high-speed control loop that balances global linear models with rapid real-time adaptations:
+The architecture runs a high speed control loop that lifts the current physical state vector of the rocket, predicts the future state vector, determines the necessary control inputs, and decodes back into a physical state space:
 
-*   **The Linear Space Embedding (EDMDc):** Extended Dynamic Mode Decomposition with control takes standard physical observations—such as 3D position, velocity, attitude (pitch/yaw), and angular rates—and maps them into a 15-state quadratic polynomial observable space. In this lifted space, the highly coupled non-linear equations behave linearly, allowing standard linear Model Predictive Control (MPC) to directly calculate optimal two-axis Thrust Vector Control (TVC) nozzle gimbal angles.
-*   **Online Koopman Adaptation ( Shifting Regimes):** Rocket dynamics change rapidly as air density drops and the vehicle lightens. The controller maintains a rolling sliding-window memory buffer of recent state transitions. Every few time steps, it runs a recursive regression to update the linear prediction matrices (A, B, and C) on the fly, ensuring the predictive model updates alongside the shifting flight envelope.
-*   **Physics-Residual Neural Network (The Corrector):** To catch unmodeled structural dynamics, sensor noise, or wind anomalies that escape the data-driven linear model, a lightweight Multi-Layer Perceptron (MLP) is run in parallel. Written in raw NumPy for fast inference, this network trains in real time via stochastic gradient descent over an experience replay buffer. It functions as a dynamic trim layer, injecting a residual correction to eliminate steady-state tracking errors.
+*   **Linear Space Embedding (EDMDc):** The Extended Dynamic Mode Decomposition with control algorithm takes the current 11 dimensional current physical state vector of the rocket: x = [h, v<sub>z</sub>, x<sub>p</sub>, v<sub>x</sub>, y<sub>p</sub>, v<sub>y</sub>, θ<sub>p</sub>, ω<sub>p</sub>, θ<sub>y</sub>, ω<sub>y</sub>, m], and breaks it into two, 4 dimensional state vectors for pitch and yaw respectively: x<sub>k</sub> = [x<sub>p</sub>, v<sub>x</sub>, θ<sub>p</sub>, ω<sub>p</sub>] & y<sub>k</sub> = [y<sub>p</sub>, v<sub>y</sub>, θ<sub>y</sub>, ω<sub>y</sub>] ([h, v<sub>z</sub>,  m] are omitted in this step). The 4 dimensional vectors are then lifted via a quadratic polynomial lifting map onto a 15 dimensional observable space for each: z<sub>k</sub> = ψ(x<sub>k</sub>). In this high dimensional state space, the nonlinearities of the physical system behave approximately linear. The transposed lifted state vector is then premultiplied by the linear prediction matrix 'A': A z<sub>k</sub>, which returns a vector prediction of how the future states would evolve naturally; this future state vector is denoted as z<sub>k+1</sub>. 
+*
+*   standard physical observations—such as 3D position, velocity, attitude (pitch/yaw), and angular rates—and maps them into a 15-state quadratic polynomial observable space. In this lifted space, the highly coupled non-linear equations behave linearly, allowing standard linear Model Predictive Control (MPC) to directly calculate optimal two-axis Thrust Vector Control (TVC) nozzle gimbal angles.
+*   **Online Koopman Adaptation:** Rocket dynamics change rapidly as air density drops and the vehicle lightens. The controller maintains a rolling sliding-window memory buffer of recent state transitions. Every few time steps, it runs a recursive regression to update the linear prediction matrices (A, B, and C) on the fly, ensuring the predictive model updates alongside the shifting flight envelope.
+*   **Physics-Residual Neural Network** To catch unmodeled structural dynamics, sensor noise, or wind anomalies that escape the data-driven linear model, a lightweight Multi-Layer Perceptron (MLP) is run in parallel. Written in raw NumPy for fast inference, this network trains in real time via stochastic gradient descent over an experience replay buffer. It functions as a dynamic trim layer, injecting a residual correction to eliminate steady-state tracking errors.
 
 ## Repository Layout
 
