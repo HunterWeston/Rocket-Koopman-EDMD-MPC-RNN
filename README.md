@@ -27,6 +27,10 @@ The framework was validated using a 30 run Monte Carlo flight simulation under i
 *   **75.7% Recovery in Stress Tests:** When the rocket was hit with an unexpected 35% spike in drag, a 25% shift in inertia, and a sudden decrease in actuator force, the online adaptive loop recovered the vehicle, lowering errors by 75.7% compared to the static EDMDc algorithm.
 *   **100% Waypoint Accuracy:** During 3D target navigation tests under heavy wind gusts, the controller guided the rocket through a target zone over 200 lateral meters away within 8 meters 100% of the time, and within 3 meters 20.0% of the time.
 
+*   Full Paper: FINDINGS_REPORT.pdf
+*   Online Demo: artifacts/plots/plots/rocket_3d_interactive.html
+
+
 ## AI Usage Statement
 
 Artificial intelligence was used in this project to identify bugs, tune PID and MPC weights, and create the HTML visualization for the model’s results. AI was not used to formulate, derive, or create the core mathematics or frameworks.
